@@ -341,6 +341,10 @@
   var state = loadState();
   function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 
+  function expandMethod(m){
+    return m.replace(/^P\.C\b/, 'Progressão de carga');
+  }
+
   function parseSets(seriesStr){
     var tags = [];
     seriesStr.split('/').forEach(function(seg){
@@ -508,7 +512,7 @@
         '</button>'+
         '<div class="ex-body"><div class="ex-body-in">'+
           '<div class="reps-line">Reps alvo: '+ex.reps+'</div>'+
-          (ex.method ? '<div class="method-line">'+ex.method+'</div>' : '')+
+          (ex.method ? '<div class="method-line">'+expandMethod(ex.method)+'</div>' : '')+
           setsHtml+
           '<button class="timer-btn" data-rest="'+restToSeconds(ex.rest)+'" data-name="'+escapeAttr(ex.name)+'">⏱ Iniciar descanso · '+ex.rest+'</button>'+
         '</div></div>'+
