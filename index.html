@@ -10,7 +10,8 @@
     --bg:#F5F1E8; --surface:#FFFFFF; --surface-2:#ECE6D8; --border:#DCD4C0;
     --text:#201E1B; --text-dim:#726C5E;
     --accent:#FF5A34; --accent-ink:#1A1207;
-    --success:#3F9160; --success-bg:#E4F1E6;
+    --success:#3F9160; --success-bg:#E4F1E6; --success-ink:#F5FFF8;
+    --danger:#D9463F; --danger-ink:#FFF6F5;
     --warn:#B8791A; --warn-bg:#F7ECD6;
     --radius:14px;
     --font-display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;
@@ -23,7 +24,8 @@
       --bg:#131419; --surface:#1C1E25; --surface-2:#262933; --border:#363A46;
       --text:#ECE9E2; --text-dim:#9A9DA8;
       --accent:#FF6B45; --accent-ink:#1A1207;
-      --success:#5FC282; --success-bg:#1C3327;
+      --success:#5FC282; --success-bg:#1C3327; --success-ink:#0B1F12;
+      --danger:#FF6B66; --danger-ink:#2B0806;
       --warn:#E8B339; --warn-bg:#3A2F14;
       color-scheme: dark;
     }
@@ -32,7 +34,8 @@
     --bg:#131419; --surface:#1C1E25; --surface-2:#262933; --border:#363A46;
     --text:#ECE9E2; --text-dim:#9A9DA8;
     --accent:#FF6B45; --accent-ink:#1A1207;
-    --success:#5FC282; --success-bg:#1C3327;
+    --success:#5FC282; --success-bg:#1C3327; --success-ink:#0B1F12;
+    --danger:#FF6B66; --danger-ink:#2B0806;
     --warn:#E8B339; --warn-bg:#3A2F14;
     color-scheme: dark;
   }
@@ -40,7 +43,8 @@
     --bg:#F5F1E8; --surface:#FFFFFF; --surface-2:#ECE6D8; --border:#DCD4C0;
     --text:#201E1B; --text-dim:#726C5E;
     --accent:#FF5A34; --accent-ink:#1A1207;
-    --success:#3F9160; --success-bg:#E4F1E6;
+    --success:#3F9160; --success-bg:#E4F1E6; --success-ink:#F5FFF8;
+    --danger:#D9463F; --danger-ink:#FFF6F5;
     --warn:#B8791A; --warn-bg:#F7ECD6;
     color-scheme: light;
   }
@@ -100,12 +104,18 @@
   }
   .cycle-strip{display:flex; gap:6px; margin-bottom:12px;}
   .cycle-pill{
-    flex:1; text-align:center; font-family:var(--font-mono); font-size:11px;
+    flex:1; display:flex; align-items:center; justify-content:center;
+    font-family:var(--font-mono); font-size:11px;
     font-weight:700; padding:7px 0; border-radius:8px; background:var(--surface-2);
-    color:var(--text-dim); border:1px solid transparent;
+    color:var(--text-dim);
   }
-  .cycle-pill.today{border-color:var(--accent); color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, var(--surface-2));}
   .cycle-pill.done{color:var(--success); background:var(--success-bg);}
+  .cycle-pill .letter-ring{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:50%; border:2px solid transparent;
+  }
+  .cycle-pill.today .letter-ring{border-color:var(--accent);}
+  .cycle-pill.today{color:var(--accent);}
   .cycle-msg{font-size:13px; color:var(--text-dim); margin:0 0 10px;}
   .cycle-msg b{color:var(--text);}
   .btn{
@@ -114,6 +124,8 @@
     cursor:pointer; width:100%;
   }
   .btn-primary{background:var(--accent); color:var(--accent-ink);}
+  .btn-confirm{background:var(--success); color:var(--success-ink);}
+  .btn-danger{background:var(--danger); color:var(--danger-ink);}
   .btn-ghost{background:transparent; color:var(--text-dim); border:1px solid var(--border);}
 
   /* trackers */
@@ -534,8 +546,12 @@
   });
 
   /* ---------- cycle card ---------- */
-  function todaySession(){
-    return state.sessions.find(function(s){ return s.date===todayISO(); });
+  function currentSlotSession(){
+    if(!state.doneThisLap[state.pointer]) return null;
+    for(var i=state.sessions.length-1;i>=0;i--){
+      if(state.sessions[i].seqIndex===state.pointer) return state.sessions[i];
+    }
+    return null;
   }
 
   function renderCycle(){
@@ -544,23 +560,24 @@
       var cls = 'cycle-pill';
       if(i===state.pointer) cls += ' today';
       else if(state.doneThisLap[i]) cls += ' done';
-      return '<div class="'+cls+'">'+d+'</div>';
+      return '<div class="'+cls+'"><span class="letter-ring">'+d+'</span></div>';
     }).join('');
     var todayLetter = SEQUENCE[state.pointer];
     var msg = todayLetter==='OFF'
       ? 'Hoje é <b>dia de folga</b> no ciclo. Abdômen/panturrilha pode entrar aqui.'
       : 'Próximo no ciclo: treino <b>'+todayLetter+' — '+DAYS[todayLetter].title+'</b>.';
-    var session = todaySession();
+    var session = currentSlotSession();
     var mainLabel = session
       ? (session.letter==='OFF' ? '↺ Desfazer dia de folga' : '↺ Desfazer treino ('+session.letter+')')
       : (todayLetter==='OFF' ? '✓ Concluir dia de folga' : '✓ Concluir treino ('+todayLetter+')');
+    var mainClass = session ? 'btn btn-danger' : 'btn btn-confirm';
 
     card.innerHTML =
       '<div class="cycle-strip">'+strip+'</div>'+
       '<p class="cycle-msg">'+msg+'</p>'+
       '<div class="cycle-actions">'+
         '<button class="btn-side" id="backBtn">‹ Voltar</button>'+
-        '<button class="btn btn-primary" id="advanceBtn">'+mainLabel+'</button>'+
+        '<button class="'+mainClass+'" id="advanceBtn">'+mainLabel+'</button>'+
         '<button class="btn-side" id="skipBtn">Pular ›</button>'+
       '</div>';
     document.getElementById('advanceBtn').addEventListener('click', handleMainAction);
@@ -569,7 +586,7 @@
   }
 
   function handleMainAction(){
-    if(todaySession()) undoSession();
+    if(currentSlotSession()) undoSession();
     else concludeSession();
   }
 
@@ -619,7 +636,9 @@
   }
 
   function undoSession(){
-    var idx = state.sessions.findIndex(function(s){ return s.date===todayISO(); });
+    var target = currentSlotSession();
+    if(!target) return;
+    var idx = state.sessions.indexOf(target);
     if(idx===-1) return;
     var session = state.sessions[idx];
     state.sessions.splice(idx,1);
