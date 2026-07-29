@@ -459,7 +459,7 @@
   var STORE_KEY = 'plano-de-treino-v1';
 
   function defaultState(){
-    return {pointer:0, doneThisLap:{}, sets:{}, cardioCount:0, abdomenCount:0, history:[]};
+    return {pointer:0, doneThisLap:{}, sets:{}, cardioCount:0, abdomenCount:0, history:[], sessions:[]};
   }
   function loadState(){
     var base = defaultState();
@@ -468,6 +468,7 @@
       if(raw){
         var parsed = JSON.parse(raw);
         parsed.history = parsed.history || [];
+        parsed.sessions = parsed.sessions || [];
         return Object.assign(base, parsed);
       }
     }catch(e){}
@@ -533,7 +534,9 @@
   });
 
   /* ---------- cycle card ---------- */
-  var undoSnapshot = null;
+  function todaySession(){
+    return state.sessions.find(function(s){ return s.date===todayISO(); });
+  }
 
   function renderCycle(){
     var card = document.getElementById('cycleCard');
@@ -547,8 +550,9 @@
     var msg = todayLetter==='OFF'
       ? 'Hoje é <b>dia de folga</b> no ciclo. Abdômen/panturrilha pode entrar aqui.'
       : 'Próximo no ciclo: treino <b>'+todayLetter+' — '+DAYS[todayLetter].title+'</b>.';
-    var mainLabel = undoSnapshot
-      ? '↺ Desfazer conclusão'
+    var session = todaySession();
+    var mainLabel = session
+      ? (session.letter==='OFF' ? '↺ Desfazer dia de folga' : '↺ Desfazer treino ('+session.letter+')')
       : (todayLetter==='OFF' ? '✓ Concluir dia de folga' : '✓ Concluir treino ('+todayLetter+')');
 
     card.innerHTML =
@@ -565,22 +569,18 @@
   }
 
   function handleMainAction(){
-    if(undoSnapshot){
-      state = undoSnapshot;
-      undoSnapshot = null;
-      save();
-      renderCycle();
-      renderTrackers();
-      renderDay();
-    } else {
-      advanceCycle();
-    }
+    if(todaySession()) undoSession();
+    else concludeSession();
   }
 
-  function advanceCycle(){
-    undoSnapshot = JSON.parse(JSON.stringify(state));
+  function concludeSession(){
     var letter = SEQUENCE[state.pointer];
-    state.doneThisLap[state.pointer] = true;
+    var seqIndex = state.pointer;
+    var doneThisLapBefore = JSON.parse(JSON.stringify(state.doneThisLap));
+    var cardioBefore = state.cardioCount, abdomenBefore = state.abdomenCount;
+    var session = {date:todayISO(), letter:letter, seqIndex:seqIndex};
+
+    state.doneThisLap[seqIndex] = true;
     if(letter !== 'OFF'){
       var day = DAYS[letter];
       Object.keys(state.sets).forEach(function(k){
@@ -590,47 +590,66 @@
             var parts = k.split('-');
             var exIdx = parseInt(parts[1],10), setIdx = parseInt(parts[2],10);
             var tags = parseSets(day.exercises[exIdx].series);
-            state.history.push({date:todayISO(), day:letter, exIdx:exIdx, setIdx:setIdx, tag:tags[setIdx]||'', weight:s.weight, reps:s.reps});
+            state.history.push({date:session.date, day:letter, exIdx:exIdx, setIdx:setIdx, tag:tags[setIdx]||'', weight:s.weight, reps:s.reps});
           }
           s.checked = false;
         }
       });
       if(state.history.length > 5000) state.history = state.history.slice(-5000);
     }
+
     state.pointer = (state.pointer+1)%7;
-    var wrapped = state.pointer===0;
-    if(wrapped){
+    if(state.pointer===0){
+      session.wrapped = true;
+      session.prevDoneThisLap = doneThisLapBefore;
+      session.prevCardio = cardioBefore;
+      session.prevAbdomen = abdomenBefore;
       state.doneThisLap = {};
       state.cardioCount = 0;
       state.abdomenCount = 0;
     }
+
+    state.sessions.push(session);
+    if(state.sessions.length > 2000) state.sessions = state.sessions.slice(-2000);
+
     save();
     renderCycle();
     renderTrackers();
     if(letter !== 'OFF') renderDay();
   }
 
-  function goBackCycle(){
-    undoSnapshot = null;
-    state.pointer = (state.pointer+6)%7;
-    delete state.doneThisLap[state.pointer];
+  function undoSession(){
+    var idx = state.sessions.findIndex(function(s){ return s.date===todayISO(); });
+    if(idx===-1) return;
+    var session = state.sessions[idx];
+    state.sessions.splice(idx,1);
+    state.history = state.history.filter(function(h){
+      return !(h.date===session.date && h.day===session.letter);
+    });
+    if(session.wrapped){
+      state.doneThisLap = session.prevDoneThisLap || {};
+      state.cardioCount = session.prevCardio || 0;
+      state.abdomenCount = session.prevAbdomen || 0;
+    } else {
+      delete state.doneThisLap[session.seqIndex];
+    }
+    state.pointer = session.seqIndex;
     save();
     renderCycle();
     renderTrackers();
+    if(session.letter !== 'OFF') renderDay();
+  }
+
+  function goBackCycle(){
+    state.pointer = (state.pointer+6)%7;
+    save();
+    renderCycle();
   }
 
   function skipCycle(){
-    undoSnapshot = null;
     state.pointer = (state.pointer+1)%7;
-    var wrapped = state.pointer===0;
-    if(wrapped){
-      state.doneThisLap = {};
-      state.cardioCount = 0;
-      state.abdomenCount = 0;
-    }
     save();
     renderCycle();
-    renderTrackers();
   }
 
   /* ---------- trackers ---------- */
