@@ -116,6 +116,8 @@
   }
   .cycle-pill.today .letter-ring{border-color:var(--accent);}
   .cycle-pill.today{color:var(--accent);}
+  .cycle-pill.today.done{color:var(--success);}
+  .cycle-pill.today.done .letter-ring{border-color:var(--success);}
   .cycle-msg{font-size:13px; color:var(--text-dim); margin:0 0 10px;}
   .cycle-msg b{color:var(--text);}
   .btn{
@@ -558,8 +560,8 @@
     var card = document.getElementById('cycleCard');
     var strip = SEQUENCE.map(function(d,i){
       var cls = 'cycle-pill';
+      if(state.doneThisLap[i]) cls += ' done';
       if(i===state.pointer) cls += ' today';
-      else if(state.doneThisLap[i]) cls += ' done';
       return '<div class="'+cls+'"><span class="letter-ring">'+d+'</span></div>';
     }).join('');
     var todayLetter = SEQUENCE[state.pointer];
