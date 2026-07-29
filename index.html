@@ -107,17 +107,11 @@
     flex:1; display:flex; align-items:center; justify-content:center;
     font-family:var(--font-mono); font-size:11px;
     font-weight:700; padding:7px 0; border-radius:8px; background:var(--surface-2);
-    color:var(--text-dim);
+    color:var(--text-dim); border:2px solid transparent;
   }
   .cycle-pill.done{color:var(--success); background:var(--success-bg);}
-  .cycle-pill .letter-ring{
-    display:inline-flex; align-items:center; justify-content:center;
-    width:22px; height:22px; border-radius:50%; border:2px solid transparent;
-  }
-  .cycle-pill.today .letter-ring{border-color:var(--accent);}
-  .cycle-pill.today{color:var(--accent);}
-  .cycle-pill.today.done{color:var(--success);}
-  .cycle-pill.today.done .letter-ring{border-color:var(--success);}
+  .cycle-pill.today{border-color:var(--accent); color:var(--accent);}
+  .cycle-pill.today.done{border-color:var(--success); color:var(--success);}
   .cycle-msg{font-size:13px; color:var(--text-dim); margin:0 0 10px;}
   .cycle-msg b{color:var(--text);}
   .btn{
@@ -167,10 +161,14 @@
 
   /* exercise cards */
   .exlist{display:grid; gap:10px; margin:8px 18px 0;}
-  .ex-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;}
+  .ex-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; transition:border-color .2s ease;}
+  .ex-card.complete{border-color:var(--success);}
+  .ex-card.complete .ex-head{background:var(--success-bg);}
+  .ex-card.complete .ex-num, .ex-card.complete .ex-name{color:var(--success);}
   .ex-head{
     width:100%; text-align:left; background:none; border:none; padding:12px 14px;
     display:flex; align-items:center; gap:10px; cursor:pointer; color:var(--text);
+    transition:background-color .2s ease;
   }
   .ex-num{
     font-family:var(--font-mono); font-size:11px; color:var(--text-dim); width:18px; flex:none;
@@ -562,7 +560,7 @@
       var cls = 'cycle-pill';
       if(state.doneThisLap[i]) cls += ' done';
       if(i===state.pointer) cls += ' today';
-      return '<div class="'+cls+'"><span class="letter-ring">'+d+'</span></div>';
+      return '<div class="'+cls+'">'+d+'</div>';
     }).join('');
     var todayLetter = SEQUENCE[state.pointer];
     var msg = todayLetter==='OFF'
@@ -723,6 +721,18 @@
   function setKey(day, exIdx, setIdx){ return day+'-'+exIdx+'-'+setIdx; }
   function getSet(key){ return state.sets[key] || {checked:false, weight:'', reps:''}; }
 
+  function isExerciseComplete(day, exIdx, tags){
+    return tags.every(function(_, setIdx){
+      var s = state.sets[setKey(day, exIdx, setIdx)];
+      return s && s.checked;
+    });
+  }
+  function isDayFullyChecked(day){
+    return DAYS[day].exercises.every(function(ex, exIdx){
+      return isExerciseComplete(day, exIdx, parseSets(ex.series));
+    });
+  }
+
   function renderDay(){
     var day = DAYS[activeTab];
     document.getElementById('dayHeading').innerHTML =
@@ -743,7 +753,8 @@
         '</div>';
       }).join('');
 
-      return '<div class="ex-card" data-idx="'+exIdx+'">'+
+      var completeCls = isExerciseComplete(activeTab, exIdx, tags) ? ' complete' : '';
+      return '<div class="ex-card'+completeCls+'" data-idx="'+exIdx+'">'+
         '<button class="ex-head">'+
           '<span class="ex-num">'+(exIdx+1)+'</span>'+
           '<span class="ex-name">'+ex.name+'</span>'+
@@ -771,6 +782,16 @@
         s.checked = cb.checked;
         state.sets[k] = s;
         save();
+
+        var card = cb.closest('.ex-card');
+        var exIdx = parseInt(card.getAttribute('data-idx'),10);
+        var tags = parseSets(day.exercises[exIdx].series);
+        card.classList.toggle('complete', isExerciseComplete(activeTab, exIdx, tags));
+
+        var seqIndex = SEQUENCE.indexOf(activeTab);
+        if(activeTab===SEQUENCE[state.pointer] && !state.doneThisLap[seqIndex] && isDayFullyChecked(activeTab)){
+          concludeSession();
+        }
       });
     });
     Array.prototype.forEach.call(list.querySelectorAll('.field input'), function(inp){
