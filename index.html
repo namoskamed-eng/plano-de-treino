@@ -205,6 +205,13 @@
     background:none; border:none; color:var(--text-dim); font-family:var(--font-mono);
     font-size:12.5px; cursor:pointer; padding:0;
   }
+  .hist-subtabs{display:flex; gap:6px; margin:14px 18px 0;}
+  .hist-subtab{
+    flex:1; padding:8px 0; text-align:center; border-radius:9px; border:1px solid var(--border);
+    background:var(--surface); font-family:var(--font-mono); font-weight:700; font-size:12px;
+    color:var(--text-dim); cursor:pointer;
+  }
+  .hist-subtab.active{background:var(--text); color:var(--bg); border-color:var(--text);}
   .hist-controls{margin:14px 18px 0; display:grid; gap:10px;}
   .hist-select{
     width:100%; background:var(--surface); border:1px solid var(--border); border-radius:10px;
@@ -239,6 +246,18 @@
     padding:5px 9px; display:flex; gap:6px; align-items:center;
   }
   .hist-set-chip b{color:var(--accent);}
+
+  #histGeneralView{display:grid; gap:12px; margin:14px 18px 0;}
+  #histGeneralView[hidden]{display:none;}
+  #histGeneralView .hist-chart-wrap{margin:0;}
+  .hist-card-title{
+    font-family:var(--font-display); text-transform:uppercase; font-size:11.5px;
+    letter-spacing:0.03em; margin:0 0 10px; color:var(--text-dim);
+  }
+  .hist-stat-line{font-family:var(--font-mono); font-size:12px; color:var(--text-dim); margin:8px 0 0;}
+  .hist-progress-big{font-family:var(--font-display); font-weight:800; font-size:36px; color:var(--accent);}
+  .hist-progress-bar{height:8px; background:var(--surface-2); border-radius:4px; overflow:hidden; margin-top:10px;}
+  .hist-progress-fill{height:100%; background:var(--accent); width:0%; transition:width .3s ease;}
 
   .foot-note{margin:22px 18px 0; font-size:11.5px; color:var(--text-dim); line-height:1.5;}
   .foot-note button{
@@ -303,6 +322,10 @@
       <div class="hist-topbar">
         <button class="hist-back" id="histBack">← Voltar ao treino</button>
       </div>
+      <div class="hist-subtabs" id="histSubtabs">
+        <button class="hist-subtab active" data-mode="exercise">Por exercício</button>
+        <button class="hist-subtab" data-mode="general">Geral</button>
+      </div>
       <div class="hist-controls">
         <select class="hist-select" id="histExercise"></select>
         <div class="hist-chips" id="histChips"></div>
@@ -312,11 +335,34 @@
           <input type="date" id="histEnd" aria-label="Até">
         </div>
       </div>
-      <div class="hist-chart-wrap">
-        <canvas id="histChart" height="140"></canvas>
-        <p class="hist-chart-empty" id="histChartEmpty"></p>
+
+      <div id="histExerciseView">
+        <div class="hist-chart-wrap">
+          <canvas id="histChart" height="140"></canvas>
+          <p class="hist-chart-empty" id="histChartEmpty"></p>
+        </div>
+        <div class="hist-list" id="histList"></div>
       </div>
-      <div class="hist-list" id="histList"></div>
+
+      <div id="histGeneralView" hidden>
+        <div class="hist-chart-wrap">
+          <h3 class="hist-card-title">Volume total por sessão</h3>
+          <canvas id="histVolumeChart" height="120"></canvas>
+          <p class="hist-chart-empty" id="histVolumeEmpty"></p>
+        </div>
+        <div class="hist-chart-wrap">
+          <h3 class="hist-card-title">Frequência de treinos</h3>
+          <canvas id="histFreqChart" height="120"></canvas>
+          <p class="hist-chart-empty" id="histFreqEmpty"></p>
+          <p class="hist-stat-line" id="histFreqStat"></p>
+        </div>
+        <div class="hist-chart-wrap">
+          <h3 class="hist-card-title">Progressão de carga</h3>
+          <div class="hist-progress-big" id="histProgressBig">—</div>
+          <p class="hist-stat-line" id="histProgressStat"></p>
+          <div class="hist-progress-bar"><div class="hist-progress-fill" id="histProgressFill"></div></div>
+        </div>
+      </div>
     </section>
 
     <p class="foot-note">Os dados (cargas, marcações, ciclo e histórico) ficam salvos apenas neste navegador. <button id="resetAll">Apagar todos os dados salvos</button></p>
@@ -446,17 +492,6 @@
     var p = iso.split('-');
     return p[2]+'/'+p[1]+'/'+p[0].slice(2);
   }
-  function getLastHistory(day, exIdx, setIdx){
-    var best = null;
-    for(var i=0;i<state.history.length;i++){
-      var h = state.history[i];
-      if(h.day===day && h.exIdx===exIdx && h.setIdx===setIdx){
-        if(!best || h.date >= best.date) best = h;
-      }
-    }
-    return best;
-  }
-
   function restToSeconds(str){
     var parts = str.split(':').map(Number);
     return parts[0]*60 + parts[1];
@@ -527,7 +562,7 @@
             var tags = parseSets(day.exercises[exIdx].series);
             state.history.push({date:todayISO(), day:letter, exIdx:exIdx, setIdx:setIdx, tag:tags[setIdx]||'', weight:s.weight, reps:s.reps});
           }
-          state.sets[k] = {checked:false, weight:'', reps:''};
+          s.checked = false;
         }
       });
       if(state.history.length > 5000) state.history = state.history.slice(-5000);
@@ -606,15 +641,12 @@
       var setsHtml = tags.map(function(tag, setIdx){
         var k = setKey(activeTab, exIdx, setIdx);
         var s = getSet(k);
-        var last = getLastHistory(activeTab, exIdx, setIdx);
-        var wPh = last && last.weight ? escapeAttr(last.weight) : '—';
-        var rPh = last && last.reps ? escapeAttr(last.reps) : '—';
         var tagCls = tag==='T' ? ' T' : '';
         return '<div class="setrow">'+
           '<input type="checkbox" data-key="'+k+'" class="set-check" '+(s.checked?'checked':'')+' aria-label="Série '+(setIdx+1)+' concluída">'+
           '<div class="settag'+tagCls+'">'+tag+'</div>'+
-          '<div class="field"><input type="text" inputmode="decimal" placeholder="'+wPh+'" value="'+escapeAttr(s.weight)+'" data-key="'+k+'" data-field="weight" aria-label="Carga"><label>kg</label></div>'+
-          '<div class="field"><input type="text" inputmode="numeric" placeholder="'+rPh+'" value="'+escapeAttr(s.reps)+'" data-key="'+k+'" data-field="reps" aria-label="Repetições"><label>reps</label></div>'+
+          '<div class="field"><input type="text" inputmode="decimal" placeholder="—" value="'+escapeAttr(s.weight)+'" data-key="'+k+'" data-field="weight" aria-label="Carga"><label>kg</label></div>'+
+          '<div class="field"><input type="text" inputmode="numeric" placeholder="—" value="'+escapeAttr(s.reps)+'" data-key="'+k+'" data-field="reps" aria-label="Repetições"><label>reps</label></div>'+
         '</div>';
       }).join('');
 
@@ -745,6 +777,18 @@
   var histListEl = document.getElementById('histList');
   var histCanvas = document.getElementById('histChart');
   var histChartEmpty = document.getElementById('histChartEmpty');
+  var histSubtabsEl = document.getElementById('histSubtabs');
+  var histExerciseViewEl = document.getElementById('histExerciseView');
+  var histGeneralViewEl = document.getElementById('histGeneralView');
+  var histVolumeCanvas = document.getElementById('histVolumeChart');
+  var histVolumeEmpty = document.getElementById('histVolumeEmpty');
+  var histFreqCanvas = document.getElementById('histFreqChart');
+  var histFreqEmpty = document.getElementById('histFreqEmpty');
+  var histFreqStat = document.getElementById('histFreqStat');
+  var histProgressBig = document.getElementById('histProgressBig');
+  var histProgressStat = document.getElementById('histProgressStat');
+  var histProgressFill = document.getElementById('histProgressFill');
+  var histMode = 'exercise';
 
   var HIST_PRESETS = [
     {key:'7d', label:'7 dias'},
@@ -790,7 +834,7 @@
         histStartInp.value = r.start;
         histEndInp.value = r.end;
         renderHistChips();
-        renderHistResults();
+        refreshHistory();
       });
     });
   }
@@ -804,7 +848,7 @@
     histStartInp.value = r.start;
     histEndInp.value = r.end;
     renderHistChips();
-    renderHistResults();
+    refreshHistory();
   }
   function closeHistory(){
     historyView.hidden = true;
@@ -812,11 +856,29 @@
   }
   document.getElementById('historyToggle').addEventListener('click', openHistory);
   document.getElementById('histBack').addEventListener('click', closeHistory);
-  histExerciseSel.addEventListener('change', renderHistResults);
-  histStartInp.addEventListener('change', function(){ histActivePreset=''; renderHistChips(); renderHistResults(); });
-  histEndInp.addEventListener('change', function(){ histActivePreset=''; renderHistChips(); renderHistResults(); });
+  histExerciseSel.addEventListener('change', refreshHistory);
+  histStartInp.addEventListener('change', function(){ histActivePreset=''; renderHistChips(); refreshHistory(); });
+  histEndInp.addEventListener('change', function(){ histActivePreset=''; renderHistChips(); refreshHistory(); });
 
-  function renderHistResults(){
+  Array.prototype.forEach.call(histSubtabsEl.querySelectorAll('.hist-subtab'), function(btn){
+    btn.addEventListener('click', function(){
+      histMode = btn.getAttribute('data-mode');
+      Array.prototype.forEach.call(histSubtabsEl.querySelectorAll('.hist-subtab'), function(b){
+        b.classList.toggle('active', b===btn);
+      });
+      histExerciseSel.style.display = histMode==='exercise' ? '' : 'none';
+      histExerciseViewEl.hidden = histMode!=='exercise';
+      histGeneralViewEl.hidden = histMode==='exercise';
+      refreshHistory();
+    });
+  });
+
+  function refreshHistory(){
+    if(histMode==='exercise') renderExerciseResults();
+    else renderGeneralResults();
+  }
+
+  function renderExerciseResults(){
     var parts = histExerciseSel.value.split('|');
     var day = parts[0], exIdx = parseInt(parts[1],10);
     var start = histStartInp.value, end = histEndInp.value;
@@ -851,37 +913,37 @@
       var pool = tSets.length ? tSets : sets.filter(function(s){ return parseFloat(s.weight); });
       if(!pool.length) return null;
       var w = Math.max.apply(null, pool.map(function(s){ return parseFloat(s.weight); }));
-      return {date:dt, weight:w};
+      return {date:dt, value:w};
     }).filter(Boolean);
 
-    drawHistChart(points);
+    drawLineChart(histCanvas, histChartEmpty, points, function(v){ return v+'kg'; });
   }
 
-  function drawHistChart(points, retries){
-    var cssW = histCanvas.parentElement.clientWidth - 24;
+  function drawLineChart(canvas, emptyEl, points, fmtValue, retries){
+    var cssW = canvas.parentElement.clientWidth - 24;
     if(cssW < 40 && (retries||0) < 5){
-      requestAnimationFrame(function(){ drawHistChart(points, (retries||0)+1); });
+      requestAnimationFrame(function(){ drawLineChart(canvas, emptyEl, points, fmtValue, (retries||0)+1); });
       return;
     }
-    var ctx = histCanvas.getContext('2d');
+    var ctx = canvas.getContext('2d');
     var dpr = window.devicePixelRatio || 1;
-    var cssH = 140;
-    histCanvas.width = cssW*dpr;
-    histCanvas.height = cssH*dpr;
-    histCanvas.style.height = cssH+'px';
+    var cssH = 120;
+    canvas.width = cssW*dpr;
+    canvas.height = cssH*dpr;
+    canvas.style.height = cssH+'px';
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,cssW,cssH);
 
     if(points.length < 2){
-      histCanvas.style.display = 'none';
-      histChartEmpty.style.display = 'block';
-      histChartEmpty.textContent = points.length===1
+      canvas.style.display = 'none';
+      emptyEl.style.display = 'block';
+      emptyEl.textContent = points.length===1
         ? 'Só um registro nesse período — volte aqui depois de mais sessões pra ver a evolução.'
         : 'Sem dados suficientes pra montar o gráfico nesse período.';
       return;
     }
-    histCanvas.style.display = 'block';
-    histChartEmpty.style.display = 'none';
+    canvas.style.display = 'block';
+    emptyEl.style.display = 'none';
 
     var styles = getComputedStyle(document.documentElement);
     var accent = styles.getPropertyValue('--accent').trim();
@@ -889,13 +951,13 @@
     var border = styles.getPropertyValue('--border').trim();
 
     var padL = 4, padR = 4, padT = 20, padB = 20;
-    var weights = points.map(function(p){ return p.weight; });
-    var minW = Math.min.apply(null, weights);
-    var maxW = Math.max.apply(null, weights);
-    if(minW===maxW){ minW -= 1; maxW += 1; }
+    var values = points.map(function(p){ return p.value; });
+    var minV = Math.min.apply(null, values);
+    var maxV = Math.max.apply(null, values);
+    if(minV===maxV){ minV -= 1; maxV += 1; }
 
     function xAt(i){ return padL + (cssW-padL-padR) * (i/(points.length-1)); }
-    function yAt(w){ return padT + (cssH-padT-padB) * (1 - (w-minW)/(maxW-minW)); }
+    function yAt(v){ return padT + (cssH-padT-padB) * (1 - (v-minV)/(maxV-minV)); }
 
     ctx.strokeStyle = border;
     ctx.lineWidth = 1;
@@ -910,13 +972,13 @@
     ctx.lineCap = 'round';
     ctx.beginPath();
     points.forEach(function(p,i){
-      var x = xAt(i), y = yAt(p.weight);
+      var x = xAt(i), y = yAt(p.value);
       if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     });
     ctx.stroke();
 
     points.forEach(function(p,i){
-      var x = xAt(i), y = yAt(p.weight);
+      var x = xAt(i), y = yAt(p.value);
       ctx.beginPath();
       ctx.arc(x,y, i===points.length-1?4.5:3, 0, Math.PI*2);
       ctx.fillStyle = accent;
@@ -933,7 +995,155 @@
     ctx.textAlign = 'right';
     ctx.fillStyle = accent;
     ctx.font = 'bold 13px monospace';
-    ctx.fillText(points[points.length-1].weight+'kg', cssW-padR, 14);
+    ctx.fillText(fmtValue(points[points.length-1].value), cssW-padR, 14);
+  }
+
+  function drawBarChart(canvas, emptyEl, buckets, retries){
+    var cssW = canvas.parentElement.clientWidth - 24;
+    if(cssW < 40 && (retries||0) < 5){
+      requestAnimationFrame(function(){ drawBarChart(canvas, emptyEl, buckets, (retries||0)+1); });
+      return;
+    }
+    var ctx = canvas.getContext('2d');
+    var dpr = window.devicePixelRatio || 1;
+    var cssH = 120;
+    canvas.width = cssW*dpr;
+    canvas.height = cssH*dpr;
+    canvas.style.height = cssH+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,cssW,cssH);
+
+    if(!buckets.length){
+      canvas.style.display = 'none';
+      emptyEl.style.display = 'block';
+      emptyEl.textContent = 'Sem treinos concluídos nesse período ainda.';
+      return;
+    }
+    canvas.style.display = 'block';
+    emptyEl.style.display = 'none';
+
+    var styles = getComputedStyle(document.documentElement);
+    var accent = styles.getPropertyValue('--accent').trim();
+    var dim = styles.getPropertyValue('--text-dim').trim();
+    var border = styles.getPropertyValue('--border').trim();
+
+    var padL = 4, padR = 4, padT = 16, padB = 20;
+    var maxCount = Math.max.apply(null, buckets.map(function(b){ return b.count; }));
+    var n = buckets.length;
+    var slot = (cssW-padL-padR)/n;
+    var barW = Math.min(28, slot*0.55);
+
+    ctx.strokeStyle = border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, cssH-padB);
+    ctx.lineTo(cssW-padR, cssH-padB);
+    ctx.stroke();
+
+    buckets.forEach(function(b,i){
+      var cx = padL + slot*i + slot/2;
+      var h = maxCount ? (b.count/maxCount) * (cssH-padT-padB) : 0;
+      var x0 = cx-barW/2, y0 = cssH-padB-h;
+      var r = Math.min(4, barW/2, h);
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      if(h<=0){
+        ctx.rect(x0, cssH-padB-1, barW, 1);
+      } else {
+        ctx.moveTo(x0, cssH-padB);
+        ctx.lineTo(x0, y0+r);
+        ctx.arcTo(x0, y0, x0+r, y0, r);
+        ctx.lineTo(x0+barW-r, y0);
+        ctx.arcTo(x0+barW, y0, x0+barW, y0+r, r);
+        ctx.lineTo(x0+barW, cssH-padB);
+        ctx.closePath();
+      }
+      ctx.fill();
+
+      ctx.fillStyle = dim;
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(b.count), cx, Math.max(y0-6, padT));
+    });
+
+    ctx.fillStyle = dim;
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('sem '+fmtDatePt(buckets[0].label), padL, cssH-4);
+    ctx.textAlign = 'right';
+    ctx.fillText('sem '+fmtDatePt(buckets[buckets.length-1].label), cssW-padR, cssH-4);
+  }
+
+  function weekKey(iso){
+    var d = new Date(iso+'T00:00:00');
+    var day = d.getDay();
+    var diffToMonday = (day===0 ? -6 : 1-day);
+    d.setDate(d.getDate()+diffToMonday);
+    return isoFromDate(d);
+  }
+
+  function renderGeneralResults(){
+    var start = histStartInp.value, end = histEndInp.value;
+
+    var volByDate = {};
+    state.history.forEach(function(h){
+      if(start && h.date<start) return;
+      if(end && h.date>end) return;
+      var w = parseFloat(h.weight), r = parseFloat(h.reps);
+      if(!w || !r) return;
+      volByDate[h.date] = (volByDate[h.date]||0) + w*r;
+    });
+    var volPoints = Object.keys(volByDate).sort().map(function(d){
+      return {date:d, value:Math.round(volByDate[d])};
+    });
+    drawLineChart(histVolumeCanvas, histVolumeEmpty, volPoints, function(v){ return v+' kg·rep'; });
+
+    var sessionDates = {};
+    state.history.forEach(function(h){
+      if(start && h.date<start) return;
+      if(end && h.date>end) return;
+      sessionDates[h.date] = true;
+    });
+    var dates = Object.keys(sessionDates).sort();
+    var weekBuckets = {};
+    dates.forEach(function(d){
+      var wk = weekKey(d);
+      weekBuckets[wk] = (weekBuckets[wk]||0)+1;
+    });
+    var weekKeys = Object.keys(weekBuckets).sort();
+    var buckets = weekKeys.map(function(k){ return {label:k, count:weekBuckets[k]}; });
+    drawBarChart(histFreqCanvas, histFreqEmpty, buckets);
+    histFreqStat.textContent = dates.length===0
+      ? ''
+      : dates.length+' treino'+(dates.length===1?'':'s')+' concluído'+(dates.length===1?'':'s')+' nesse período.';
+
+    var byExercise = {};
+    state.history.forEach(function(h){
+      if(start && h.date<start) return;
+      if(end && h.date>end) return;
+      if(!parseFloat(h.weight)) return;
+      var key = h.day+'|'+h.exIdx;
+      byExercise[key] = byExercise[key] || {};
+      byExercise[key][h.date] = Math.max(byExercise[key][h.date]||0, parseFloat(h.weight));
+    });
+    var total = 0, improved = 0;
+    Object.keys(byExercise).forEach(function(key){
+      var byDate = byExercise[key];
+      var ds = Object.keys(byDate).sort();
+      if(ds.length < 2) return;
+      total++;
+      if(byDate[ds[ds.length-1]] > byDate[ds[0]]) improved++;
+    });
+    if(total===0){
+      histProgressBig.textContent = '—';
+      histProgressStat.textContent = 'Sem exercícios com pelo menos duas sessões registradas nesse período ainda.';
+      histProgressFill.style.width = '0%';
+    } else {
+      var pct = Math.round((improved/total)*100);
+      histProgressBig.textContent = pct+'%';
+      histProgressStat.textContent = improved+' de '+total+' exercícios com carga maior na sessão mais recente do período, em relação à mais antiga do período.';
+      histProgressFill.style.width = pct+'%';
+    }
   }
 
   /* ---------- reset ---------- */
@@ -943,7 +1153,7 @@
       state = defaultState();
       activeTab = 'A';
       renderCycle(); renderTrackers(); renderTabs(); renderDay();
-      if(!historyView.hidden) renderHistResults();
+      if(!historyView.hidden) refreshHistory();
     }
   });
 
