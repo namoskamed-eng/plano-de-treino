@@ -103,6 +103,11 @@
     border-radius:var(--radius); padding:14px;
   }
   .cycle-strip{display:flex; gap:6px; margin-bottom:12px;}
+  .cycle-col{flex:1; display:flex; flex-direction:column; gap:3px;}
+  .cycle-date{
+    font-family:var(--font-mono); font-size:9px; font-weight:700; text-align:center;
+    color:var(--success); min-height:11px; line-height:11px;
+  }
   .cycle-pill{
     flex:1; display:flex; align-items:center; justify-content:center;
     font-family:var(--font-mono); font-size:11px;
@@ -554,13 +559,27 @@
     return null;
   }
 
+  function sessionForSlot(seqIndex){
+    if(!state.doneThisLap[seqIndex]) return null;
+    for(var i=state.sessions.length-1;i>=0;i--){
+      if(state.sessions[i].seqIndex===seqIndex) return state.sessions[i];
+    }
+    return null;
+  }
+  function fmtDayMonth(iso){
+    var p = iso.split('-');
+    return p[2]+'/'+p[1];
+  }
+
   function renderCycle(){
     var card = document.getElementById('cycleCard');
     var strip = SEQUENCE.map(function(d,i){
       var cls = 'cycle-pill';
       if(state.doneThisLap[i]) cls += ' done';
       if(i===state.pointer) cls += ' today';
-      return '<div class="'+cls+'">'+d+'</div>';
+      var slotSession = sessionForSlot(i);
+      var dateLabel = slotSession ? fmtDayMonth(slotSession.date) : '';
+      return '<div class="cycle-col"><span class="cycle-date">'+dateLabel+'</span><div class="'+cls+'">'+d+'</div></div>';
     }).join('');
     var todayLetter = SEQUENCE[state.pointer];
     var msg = todayLetter==='OFF'
